@@ -3,7 +3,7 @@
  */
 
 import OpenMemory from 'openmemory-js';
-import type { StoredMessage, RetrievedMessage } from './types.js';
+import type { StoredMessage, OpenMemoryMatch } from './types.js';
 import { extractSearchableText } from './utils/messageFormatter.js';
 
 export interface OpenMemoryClientConfig {
@@ -25,18 +25,93 @@ export class OpenMemoryClient {
   }
 
   /**
+   * Chunk text into smaller pieces for storage
+   */
+  private chunkText(text: string, maxChunkSize: number = 100000): string[] {
+    // ~25k tokens per chunk (100k chars / 4)
+    const chunks: string[] = [];
+    
+    for (let i = 0; i < text.length; i += maxChunkSize) {
+      chunks.push(text.substring(i, i + maxChunkSize));
+    }
+    
+    return chunks;
+  }
+
+  /**
    * Store a message in OpenMemory
+   * Automatically chunks large messages to avoid 413 errors
    */
   async addMessage(message: StoredMessage): Promise<void> {
     try {
       // Extract searchable text for embedding
-      const searchableText = extractSearchableText({
-        role: message.role as any,
-        content: message.content as any,
+      // Pass the full message content (handles both string and object formats)
+      const searchableText = extractSearchableText(message.content);
+
+      // Validate that we have actual content to store
+      if (!searchableText || searchableText.trim().length === 0) {
+        console.error(
+          `❌ [InfiniteMemory] Cannot store message ${message.id}: Empty content`,
+          {
+            role: message.role,
+            contentType: typeof message.content,
+            hasPartsArray: !!(message.content as any)?.parts,
+            partsLength: (message.content as any)?.parts?.length,
+            extractedText: searchableText,
+          }
+        );
+        return; // Skip storing empty messages
+      }
+
+      console.log(`🔍 [InfiniteMemory] Storing message ${message.id}:`, {
+        role: message.role,
+        textLength: searchableText.length,
+        textPreview: searchableText.substring(0, 100),
       });
 
-      // Store with tags for scoping and metadata for reconstruction
-      await this.client.add(searchableText, {
+      // If text is very large (>200k chars / ~50k tokens), chunk it
+      const MAX_SIZE = 200000;
+      if (searchableText.length > MAX_SIZE) {
+        const chunks = this.chunkText(searchableText, 100000);
+        console.log(`📦 [InfiniteMemory] Message too large, storing in ${chunks.length} chunks (parallel)`);
+        
+        // Store all chunks in parallel for speed
+        const startTime = Date.now();
+        await Promise.all(
+          chunks.map((chunk, i) => {
+            const chunkId = `${message.id}-chunk-${i + 1}`;
+            
+            console.log(`📝 [InfiniteMemory] Storing chunk ${i + 1}/${chunks.length}: ${chunkId}`);
+            
+            return this.client.add(chunk, {
+              tags: [
+                'message',
+                'chunk',
+                message.role,
+                message.conversationId,
+                message.userId,
+              ],
+              metadata: {
+                timestamp: message.timestamp,
+                messageId: message.id,
+                chunkId,
+                chunkIndex: i + 1,
+                totalChunks: chunks.length,
+                role: message.role,
+              },
+            });
+          })
+        );
+        
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`✅ [InfiniteMemory] Stored message ${message.id} in ${chunks.length} chunks (${duration}s)`);
+        return;
+      }
+
+      // Store searchable text normally if not too large
+      // Let OpenMemory process/summarize as needed
+      // Include timestamp for temporal decay/recency
+      const result = await this.client.add(searchableText, {
         tags: [
           'message',
           message.role,
@@ -44,36 +119,39 @@ export class OpenMemoryClient {
           message.userId,
         ],
         metadata: {
-          id: message.id,
-          conversationId: message.conversationId,
-          userId: message.userId,
-          role: message.role,
-          content: JSON.stringify(message.content),
           timestamp: message.timestamp,
+          messageId: message.id,
+          role: message.role,
         },
       });
 
       console.log(
-        `📝 [InfiniteMemory] Stored message ${message.id} (${message.role})`
+        `📝 [InfiniteMemory] Stored message ${message.id} (${message.role})`,
+        result
       );
     } catch (error) {
       console.error(
         `❌ [InfiniteMemory] Failed to store message ${message.id}:`,
         error
       );
+      console.error(`❌ [InfiniteMemory] Message details:`, {
+        role: message.role,
+        contentType: typeof message.content,
+        contentLength: JSON.stringify(message.content).length,
+      });
       // Don't throw - storage failures shouldn't break the chat flow
     }
   }
 
   /**
-   * Query for relevant messages
+   * Query for relevant message IDs
    */
   async queryRelevant(
     _conversationId: string,
     _userId: string,
     queryText: string,
     k: number = 20
-  ): Promise<RetrievedMessage[]> {
+  ): Promise<OpenMemoryMatch[]> {
     try {
       // Create a promise that rejects after timeout
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -87,37 +165,21 @@ export class OpenMemoryClient {
       ]);
 
       console.log(
-        `🔍 [InfiniteMemory] Found ${result.matches.length} relevant messages`
+        `🔍 [InfiniteMemory] Found ${result.matches.length} relevant matches`
       );
 
-      // Convert OpenMemory results to RetrievedMessage format
-      return result.matches
-        .map((match): RetrievedMessage | null => {
-          try {
-            // Reconstruct the stored message from metadata
-            const metadata = match.metadata as any;
-            const storedMessage: StoredMessage = {
-              id: metadata.id,
-              conversationId: metadata.conversationId,
-              userId: metadata.userId,
-              role: metadata.role,
-              content: JSON.parse(metadata.content),
-              timestamp: metadata.timestamp,
-            };
+      // Debug: Log what we're getting from OpenMemory
+      if (result.matches.length > 0) {
+        console.log('🔬 [InfiniteMemory] Sample match structure:', JSON.stringify(result.matches[0], null, 2));
+      }
 
-            return {
-              message: storedMessage,
-              score: match.score,
-            };
-          } catch (error) {
-            console.error(
-              '❌ [InfiniteMemory] Failed to parse stored message:',
-              error
-            );
-            return null;
-          }
-        })
-        .filter((m): m is RetrievedMessage => m !== null);
+      // Return the processed content directly (OpenMemory's summaries)
+      // Extract timestamp - OpenMemory uses 'last_seen_at' field
+      return result.matches.map((match): OpenMemoryMatch => ({
+        content: match.content, // Use OpenMemory's processed/summarized content
+        score: match.score,
+        timestamp: (match as any).last_seen_at as number | undefined, // OpenMemory's timestamp field
+      }));
     } catch (error) {
       console.error(
         `⚠️ [InfiniteMemory] OpenMemory query failed (${error instanceof Error ? error.message : 'unknown'}), will use fallback`

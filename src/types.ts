@@ -57,11 +57,22 @@ export interface RetrievedMessage {
 }
 
 /**
+ * OpenMemory query result - content and scores
+ */
+export interface OpenMemoryMatch {
+  content: string; // OpenMemory's processed/summarized content
+  score: number;
+  timestamp?: number; // Unix timestamp from metadata
+}
+
+/**
  * Context retrieval result
  */
 export interface ContextResult {
   /** Messages to send to Claude */
   messages: CoreMessage[];
+  /** Historical context from OpenMemory (summarized memories) */
+  historicalContext: string | null;
   /** Metadata about the retrieval */
   metadata: {
     /** Total estimated tokens */
@@ -72,6 +83,8 @@ export interface ContextResult {
     retrievedCount: number;
     /** Whether OpenMemory was used successfully */
     usedOpenMemory: boolean;
+    /** Whether messages were summarized due to size */
+    summarized?: boolean;
   };
 }
 

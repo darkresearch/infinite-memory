@@ -7,8 +7,37 @@ import type { StoredMessage } from '../types.js';
 
 /**
  * Extract searchable text from a message for OpenMemory embedding
+ * Handles both CoreMessage format and UIMessage format (with parts array)
  */
-export function extractSearchableText(message: CoreMessage): string {
+export function extractSearchableText(message: any): string {
+  // Handle UIMessage format (from AI SDK with parts array)
+  if (message.parts && Array.isArray(message.parts)) {
+    const textParts: string[] = [];
+    
+    for (const part of message.parts) {
+      if (part.type === 'text' && part.text) {
+        textParts.push(part.text);
+      } else if (part.type === 'reasoning' && part.text) {
+        // Include reasoning content for searchability
+        textParts.push(part.text);
+      } else if (part.type === 'tool-call') {
+        textParts.push(`[Tool: ${part.toolName}]`);
+        textParts.push(JSON.stringify(part.args || {}));
+      } else if (part.type === 'tool-result') {
+        textParts.push(`[Result: ${part.toolName || 'unknown'}]`);
+        const result = part.result || part.content;
+        if (typeof result === 'string') {
+          textParts.push(result);
+        } else {
+          textParts.push(JSON.stringify(result || {}));
+        }
+      }
+    }
+    
+    return textParts.join(' ').trim();
+  }
+  
+  // Handle CoreMessage format (with content field)
   const content = message.content;
 
   if (typeof content === 'string') {
@@ -39,7 +68,7 @@ export function extractSearchableText(message: CoreMessage): string {
       }
     }
 
-    return textParts.join(' ');
+    return textParts.join(' ').trim();
   }
 
   return '';
@@ -66,8 +95,22 @@ export function toStoredMessage(
 
 /**
  * Convert StoredMessage back to CoreMessage
+ * Handles both parts array (UIMessage) and content field (CoreMessage)
  */
 export function toCoreMessage(stored: StoredMessage): CoreMessage {
+  // If content is an array of parts, convert to CoreMessage format
+  if (Array.isArray(stored.content)) {
+    // Check if it's a parts array (has type field)
+    if (stored.content.length > 0 && stored.content[0].type) {
+      // Convert parts array to content array for CoreMessage
+      return {
+        role: stored.role as any,
+        content: stored.content as any, // Parts array is valid as content
+      };
+    }
+  }
+  
+  // Otherwise use as-is
   return {
     role: stored.role as any,
     content: stored.content as any,

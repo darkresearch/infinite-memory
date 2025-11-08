@@ -106,6 +106,8 @@ export class InfiniteMemoryModel {
 
             if (done) {
               // Store the complete assistant response
+              console.log(`🔍 [InfiniteMemory] Stream done. Accumulated ${accumulatedParts.length} text parts, ${accumulatedToolCalls.length} tool calls`);
+              
               if (accumulatedParts.length > 0 || accumulatedToolCalls.length > 0) {
                 const content =
                   accumulatedToolCalls.length > 0
@@ -118,12 +120,21 @@ export class InfiniteMemoryModel {
                       ]
                     : accumulatedParts.join('');
 
-                await this.contextManager.storeMessage(
-                  this.context,
-                  'assistant',
-                  content,
-                  assistantMessageId
-                );
+                // Only store if there's actual text content
+                const hasText = typeof content === 'string' ? content.length > 0 : true;
+                if (hasText) {
+                  console.log(`💾 [InfiniteMemory] Storing assistant message (${typeof content === 'string' ? content.length : 'multipart'} chars)`);
+                  await this.contextManager.storeMessage(
+                    this.context,
+                    'assistant',
+                    content,
+                    assistantMessageId
+                  );
+                } else {
+                  console.log(`⚠️ [InfiniteMemory] Skipping storage - empty content`);
+                }
+              } else {
+                console.log(`⚠️ [InfiniteMemory] Skipping storage - no accumulated content`);
               }
 
               controller.close();

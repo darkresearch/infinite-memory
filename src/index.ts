@@ -1,54 +1,99 @@
+import { OpenMemoryClient } from './OpenMemoryClient';
+import { ContextManager } from './ContextManager';
+import { createAnthropic } from '@ai-sdk/anthropic';
+import type { InfiniteMemoryConfig } from './types';
+import type { CoreMessage } from 'ai';
+
+export { InfiniteMemoryConfig, ModelContext } from './types';
+
 /**
- * @darkresearch/infinite-memory
- * 
- * Infinite context windows for Claude via OpenMemory semantic retrieval
+ * Type for the return value of createInfiniteMemory
  */
-
-import { InfiniteMemoryProvider } from './InfiniteMemoryProvider.js';
-import type { InfiniteMemoryConfig, ModelContext, ModelCreator } from './types.js';
+export type InfiniteMemory = ReturnType<typeof createInfiniteMemory>;
 
 /**
- * Create an infinite memory provider
+ * Create an infinite memory instance for managing conversation context
  * 
  * @example
  * ```typescript
  * const memory = createInfiniteMemory({
  *   openMemoryUrl: 'http://localhost:8080',
- *   openMemoryApiKey: process.env.OPENMEMORY_API_KEY!,
- *   anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
+ *   openMemoryApiKey: 'your-api-key',
+ *   anthropicApiKey: 'your-anthropic-key'
  * });
  * 
- * const model = memory('claude-sonnet-4', {
- *   conversationId: 'conv_123',
- *   userId: 'user_456'
- * });
+ * // Get relevant context
+ * const context = await memory.getRelevantContext(
+ *   conversationId,
+ *   userId,
+ *   messages,
+ *   'claude-sonnet-4-20250514'
+ * );
  * 
- * const result = await streamText({
- *   model,
- *   messages: [{ role: 'user', content: 'Hello!' }]
- * });
+ * // Store a message
+ * await memory.storeMessage(
+ *   conversationId,
+ *   userId,
+ *   'user',
+ *   'Hello!',
+ *   'msg-123'
+ * );
  * ```
  */
-export function createInfiniteMemory(
-  config: InfiniteMemoryConfig
-): ModelCreator {
-  const provider = new InfiniteMemoryProvider(config);
-  
-  return (modelId: string, context: ModelContext) => {
-    return provider.createModel(modelId, context);
+export function createInfiniteMemory(config: InfiniteMemoryConfig) {
+  const openMemoryClient = new OpenMemoryClient({
+    baseUrl: config.openMemoryUrl,
+    apiKey: config.openMemoryApiKey,
+    timeout: config.openMemoryTimeout,
+  });
+
+  const anthropic = createAnthropic({
+    apiKey: config.anthropicApiKey,
+  });
+
+  const contextManager = new ContextManager(openMemoryClient, config.anthropicApiKey);
+
+  return {
+    /**
+     * Get relevant context for the current conversation
+     * Combines recent messages with semantically relevant older messages
+     */
+    async getRelevantContext(
+      conversationId: string,
+      userId: string,
+      messages: CoreMessage[],
+      modelId: string
+    ) {
+      return contextManager.getRelevantContext(
+        { conversationId, userId },
+        messages,
+        modelId
+      );
+    },
+
+    /**
+     * Store a message in OpenMemory for future retrieval
+     */
+    async storeMessage(
+      conversationId: string,
+      userId: string,
+      role: 'user' | 'assistant',
+      content: string | any[],
+      messageId: string
+    ) {
+      return contextManager.storeMessage(
+        { conversationId, userId },
+        role,
+        content,
+        messageId
+      );
+    },
+
+    /**
+     * Get the Anthropic model instance for making calls
+     */
+    getModel(modelId: string) {
+      return anthropic(modelId);
+    },
   };
 }
-
-// Export types
-export type {
-  InfiniteMemoryConfig,
-  ModelContext,
-  ModelCreator,
-  StoredMessage,
-  RetrievedMessage,
-  ContextResult,
-} from './types.js';
-
-// Re-export model limits
-export { MODEL_LIMITS, getModelLimit } from './types.js';
-

@@ -14,8 +14,9 @@ export function estimateTokens(text: string): number {
 
 /**
  * Extract text from message content for token estimation
+ * Handles both CoreMessage format (content field) and UIMessage format (parts array)
  */
-function extractTextFromContent(content: CoreMessage['content']): string {
+function extractTextFromContent(content: CoreMessage['content'] | any): string {
   if (typeof content === 'string') {
     return content;
   }
@@ -42,16 +43,37 @@ function extractTextFromContent(content: CoreMessage['content']): string {
 
 /**
  * Estimate tokens for a single message
+ * Handles both CoreMessage format (content field) and UIMessage format (parts array)
  */
-export function estimateMessageTokens(message: CoreMessage): number {
-  const textContent = extractTextFromContent(message.content);
-  return estimateTokens(textContent);
+export function estimateMessageTokens(message: CoreMessage | any): number {
+  // Handle UIMessage format (has parts array directly)
+  if ((message as any).parts) {
+    const textContent = extractTextFromContent((message as any).parts);
+    const tokens = estimateTokens(textContent);
+    return tokens;
+  }
+  
+  // Handle CoreMessage format (has content field)
+  if (message.content) {
+    const textContent = extractTextFromContent(message.content);
+    const tokens = estimateTokens(textContent);
+    return tokens;
+  }
+  
+  // No content found
+  console.warn('[InfiniteMemory] Message has no content or parts:', { 
+    hasContent: !!message.content, 
+    hasParts: !!(message as any).parts,
+    keys: Object.keys(message)
+  });
+  return 0;
 }
 
 /**
  * Estimate total tokens for an array of messages
+ * Handles both CoreMessage and UIMessage formats
  */
-export function estimateTotalTokens(messages: CoreMessage[]): number {
+export function estimateTotalTokens(messages: (CoreMessage | any)[]): number {
   return messages.reduce((total, msg) => total + estimateMessageTokens(msg), 0);
 }
 

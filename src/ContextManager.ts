@@ -11,13 +11,16 @@ import type {
 } from './types.js';
 import {
   estimateTotalTokens,
-  estimateMessageTokens,
 } from './utils/tokenEstimator.js';
-import { extractSearchableText, toCoreMessage } from './utils/messageFormatter.js';
+import { extractSearchableText } from './utils/messageFormatter.js';
 import { getModelLimit } from './types.js';
+import { summarizeConversation, summarizeLargeMessage } from './utils/summarizer.js';
 
 export class ContextManager {
-  constructor(private openMemory: OpenMemoryClient) {}
+  constructor(
+    private openMemory: OpenMemoryClient,
+    private anthropicApiKey: string
+  ) {}
 
   /**
    * Store a message in OpenMemory
@@ -64,45 +67,106 @@ export class ContextManager {
       `📌 [InfiniteMemory] Recent ${recentCount} messages: ${recentTokens.toLocaleString()} tokens`
     );
 
-    // If recent messages already exceed budget, truncate to last 3
+    // If recent messages exceed budget, use Claude to summarize
     if (recentTokens > inputBudget) {
-      const minRecent = Math.min(3, messages.length);
-      const truncatedRecent = messages.slice(-minRecent);
-      const truncatedTokens = estimateTotalTokens(truncatedRecent);
-
-      console.warn(
-        `⚠️ [InfiniteMemory] Recent messages exceed budget, using last ${minRecent} messages (${truncatedTokens.toLocaleString()} tokens)`
-      );
-
-      return {
-        messages: truncatedRecent,
-        metadata: {
-          estimatedTokens: truncatedTokens,
-          recentCount: minRecent,
-          retrievedCount: 0,
-          usedOpenMemory: false,
-        },
-      };
+      console.log(`🔄 [InfiniteMemory] Recent messages (${recentTokens.toLocaleString()} tokens) exceed budget (${inputBudget.toLocaleString()}), summarizing with Claude...`);
+      
+      try {
+        const latestMessage = messages[messages.length - 1];
+        const latestTokens = estimateTotalTokens([latestMessage]);
+        
+        // CASE 1: Single massive message
+        if (latestTokens > inputBudget) {
+          console.log(`⚠️ [InfiniteMemory] Single message too large (${latestTokens.toLocaleString()} tokens), summarizing it...`);
+          
+          const summary = await summarizeLargeMessage(
+            latestMessage,
+            this.anthropicApiKey,
+            modelId
+          );
+          
+          const summaryTokens = Math.ceil(summary.length / 4);
+          console.log(`✅ [InfiniteMemory] Summarized single message: ${latestTokens.toLocaleString()} → ${summaryTokens.toLocaleString()} tokens`);
+          
+          return {
+            messages: [],
+            historicalContext: `[SUMMARIZED LARGE MESSAGE]\n${summary}`,
+            metadata: {
+              estimatedTokens: summaryTokens,
+              recentCount: 0,
+              retrievedCount: 0,
+              usedOpenMemory: false,
+              summarized: true,
+            }
+          };
+        }
+        
+        // CASE 2: Many large messages
+        const toSummarize = messages.slice(-recentCount, -1); // All but latest
+        
+        const summary = await summarizeConversation(
+          toSummarize,
+          this.anthropicApiKey,
+          modelId
+        );
+        
+        const summaryTokens = Math.ceil(summary.length / 4);
+        
+        console.log(`✅ [InfiniteMemory] Summarized ${toSummarize.length} messages: ${recentTokens.toLocaleString()} → ${(summaryTokens + latestTokens).toLocaleString()} tokens`);
+        
+        return {
+          messages: [latestMessage],
+          historicalContext: `[SUMMARIZED RECENT CONVERSATION]\n${summary}\n\n[CURRENT MESSAGE FOLLOWS]`,
+          metadata: {
+            estimatedTokens: latestTokens + summaryTokens,
+            recentCount: 1,
+            retrievedCount: 0,
+            usedOpenMemory: false,
+            summarized: true,
+          }
+        };
+      } catch (error) {
+        console.error('⚠️ [InfiniteMemory] Summarization failed, falling back to truncation:', error);
+        
+        const minRecent = Math.min(3, messages.length);
+        const truncatedRecent = messages.slice(-minRecent);
+        const truncatedTokens = estimateTotalTokens(truncatedRecent);
+        
+        return {
+          messages: truncatedRecent,
+          historicalContext: null,
+          metadata: {
+            estimatedTokens: truncatedTokens,
+            recentCount: minRecent,
+            retrievedCount: 0,
+            usedOpenMemory: false,
+          }
+        };
+      }
     }
 
     // Query OpenMemory for relevant older messages
     const latestMessage = messages[messages.length - 1];
     const queryText = extractSearchableText(latestMessage);
 
-    const retrievedMessages = await this.openMemory.queryRelevant(
+    const matches = await this.openMemory.queryRelevant(
       context.conversationId,
       context.userId,
       queryText,
       20 // Get top 20 candidates
     );
 
-    // If OpenMemory failed or returned nothing, use recent only
-    if (retrievedMessages.length === 0) {
+    console.log(`🔍 [InfiniteMemory] Found ${matches.length} relevant memories`);
+
+    // Use OpenMemory's processed content directly (summarized memories)
+    // No need to fetch from Supabase - the summaries are perfect for context
+    if (matches.length === 0) {
       console.log(
-        `📭 [InfiniteMemory] No retrieved messages, using recent only`
+        `📭 [InfiniteMemory] No retrieved memories, using recent only`
       );
       return {
         messages: recentMessages,
+        historicalContext: null,
         metadata: {
           estimatedTokens: recentTokens,
           recentCount,
@@ -112,54 +176,41 @@ export class ContextManager {
       };
     }
 
-    // Sort retrieved by score (relevance) and add until budget is reached
-    const remainingBudget = inputBudget - recentTokens;
-    const selectedRetrieved: StoredMessage[] = [];
-    let retrievedTokens = 0;
-
-    for (const retrieved of retrievedMessages) {
-      // Skip if this message is already in recent set (rough check by timestamp)
-      const isRecent = recentMessages.some(
-        (recent) =>
-          JSON.stringify(recent.content) ===
-          JSON.stringify(retrieved.message.content)
-      );
-
-      if (isRecent) {
-        continue;
+    // Format memories as JSON objects for clear delineation
+    const memoryObjects = matches.map((match) => {
+      const memoryObj: any = {
+        content: match.content,
+        relevance: match.score,
+      };
+      
+      // Add timestamp if available
+      if (match.timestamp) {
+        memoryObj.timestamp_ms = match.timestamp;
       }
-
-      const msgTokens = estimateMessageTokens(
-        toCoreMessage(retrieved.message)
-      );
-
-      if (retrievedTokens + msgTokens <= remainingBudget) {
-        selectedRetrieved.push(retrieved.message);
-        retrievedTokens += msgTokens;
-      }
-    }
-
-    // Sort retrieved messages chronologically (oldest first)
-    selectedRetrieved.sort((a, b) => a.timestamp - b.timestamp);
-
-    // Combine: retrieved (oldest to newest) + recent (oldest to newest)
-    const combinedMessages: CoreMessage[] = [
-      ...selectedRetrieved.map(toCoreMessage),
-      ...recentMessages,
-    ];
-
-    const totalTokens = recentTokens + retrievedTokens;
+      
+      return JSON.stringify(memoryObj, null, 2);
+    });
+    
+    const historicalContext = `=== Relevant context from past conversations ===\nEach memory is a JSON object with timestamp_ms (Unix epoch), content, and relevance score.\nMore recent timestamps and higher relevance scores are more important.\n\n${memoryObjects.join('\n\n')}`;
+    
+    const contextTokens = Math.ceil(historicalContext.length / 4);
 
     console.log(
-      `✅ [InfiniteMemory] Context built: ${selectedRetrieved.length} retrieved (${retrievedTokens.toLocaleString()} tokens) + ${recentCount} recent = ${totalTokens.toLocaleString()} tokens`
+      `✅ [InfiniteMemory] Context built: ${matches.length} memories (${contextTokens.toLocaleString()} tokens) + ${recentCount} recent messages`
     );
+    console.log('📜 [InfiniteMemory] Historical context (sorted by relevance + recency):');
+    console.log('─'.repeat(80));
+    console.log(historicalContext);
+    console.log('─'.repeat(80));
+    console.log('💡 [InfiniteMemory] Note: OpenMemory uses temporal decay - recent memories are prioritized');
 
     return {
-      messages: combinedMessages,
+      messages: recentMessages,
+      historicalContext,
       metadata: {
-        estimatedTokens: totalTokens,
+        estimatedTokens: recentTokens + contextTokens,
         recentCount,
-        retrievedCount: selectedRetrieved.length,
+        retrievedCount: matches.length,
         usedOpenMemory: true,
       },
     };

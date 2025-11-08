@@ -26,7 +26,7 @@ export class InfiniteMemoryProvider {
     });
 
     // Initialize context manager
-    this.contextManager = new ContextManager(this.openMemory);
+    this.contextManager = new ContextManager(this.openMemory, config.anthropicApiKey);
 
     // Initialize Anthropic provider
     this.anthropicProvider = createAnthropic({
