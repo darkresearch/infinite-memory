@@ -260,7 +260,7 @@ Enable verbose logging by checking console output:
 
 ## License
 
-MIT © Dark Research
+Apache 2.0 © Dark Research
 
 ## Credits
 
