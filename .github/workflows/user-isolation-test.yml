@@ -1,0 +1,72 @@
+name: User Isolation Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual runs
+
+jobs:
+  test-user-isolation:
+    runs-on: ubuntu-latest
+    
+    services:
+      openmemory:
+        image: ghcr.io/caviraoss/openmemory:latest
+        ports:
+          - 8080:8080
+        env:
+          # Hardcoded test keys - safe because this is an ephemeral, isolated instance
+          OPENMEMORY_API_KEY: test-ci-key-for-isolation-testing
+        options: >-
+          --health-cmd "curl -f http://localhost:8080/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build package
+        run: bun run build
+
+      - name: Wait for OpenMemory to be ready
+        run: |
+          echo "Waiting for OpenMemory to be healthy..."
+          for i in {1..30}; do
+            if curl -f http://localhost:8080/health; then
+              echo "✅ OpenMemory is ready!"
+              break
+            fi
+            echo "Waiting... attempt $i/30"
+            sleep 2
+          done
+
+      - name: Run User Isolation Test
+        env:
+          OPENMEMORY_URL: http://localhost:8080
+          # Hardcoded test key - safe because this is an ephemeral, isolated instance
+          OPENMEMORY_API_KEY: test-ci-key-for-isolation-testing
+          # Note: ANTHROPIC_API_KEY not needed - test messages are tiny, no summarization triggered
+        run: node tests/user-isolation.test.js
+
+      - name: Test Summary
+        if: always()
+        run: |
+          if [ $? -eq 0 ]; then
+            echo "✅ User isolation test PASSED"
+          else
+            echo "❌ User isolation test FAILED"
+            exit 1
+          fi
+
