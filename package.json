@@ -1,6 +1,6 @@
 {
   "name": "infinite-memory",
-  "version": "0.1.3",
+  "version": "0.1.5-beta.3",
   "description": "Infinite context windows for Claude via OpenMemory semantic retrieval",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -8,7 +8,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test:isolation": "node tests/user-isolation.test.js"
   },
   "keywords": [
     "claude",

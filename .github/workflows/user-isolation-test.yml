@@ -1,0 +1,87 @@
+name: User Isolation Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual runs
+
+jobs:
+  test-user-isolation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build package
+        run: bun run build
+
+      - name: Checkout OpenMemory
+        uses: actions/checkout@v4
+        with:
+          repository: 'CaviraOSS/OpenMemory'
+          path: 'openmemory-repo'
+
+      - name: Build and Start OpenMemory
+        run: |
+          cd openmemory-repo/backend
+          # Build the Docker image
+          docker build -t openmemory-test:latest .
+          # Run the container
+          docker run -d \
+            --name openmemory \
+            -p 8080:8080 \
+            -e OM_PORT=8080 \
+            -e OM_API_KEY=test-ci-key-for-isolation-testing \
+            -e OM_EMBEDDINGS=synthetic \
+            -e OM_EMBED_MODE=simple \
+            -e OM_VEC_DIM=256 \
+            openmemory-test:latest
+
+      - name: Wait for OpenMemory to be ready
+        run: |
+          echo "Waiting for OpenMemory to be healthy..."
+          for i in {1..60}; do
+            if curl -f http://localhost:8080/health 2>/dev/null; then
+              echo "✅ OpenMemory is ready!"
+              exit 0
+            fi
+            echo "Waiting... attempt $i/60"
+            sleep 2
+          done
+          echo "❌ OpenMemory failed to start"
+          docker logs openmemory
+          exit 1
+
+      - name: Show OpenMemory logs (if startup succeeded)
+        if: success()
+        run: docker logs openmemory --tail 50
+
+      - name: Run User Isolation Test
+        env:
+          OPENMEMORY_URL: http://localhost:8080
+          # Hardcoded test key - safe because this is an ephemeral, isolated instance
+          OPENMEMORY_API_KEY: test-ci-key-for-isolation-testing
+          # Note: ANTHROPIC_API_KEY not needed - test messages are tiny, no summarization triggered
+        run: node tests/user-isolation.test.js
+
+      - name: Show OpenMemory logs (if test failed)
+        if: failure()
+        run: docker logs openmemory
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker stop openmemory || true
+          docker rm openmemory || true
+

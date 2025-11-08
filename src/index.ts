@@ -1,10 +1,10 @@
-import { OpenMemoryClient } from './OpenMemoryClient';
-import { ContextManager } from './ContextManager';
+import { OpenMemoryClient } from './OpenMemoryClient.js';
+import { ContextManager } from './ContextManager.js';
 import { createAnthropic } from '@ai-sdk/anthropic';
-import type { InfiniteMemoryConfig } from './types';
+import type { InfiniteMemoryConfig } from './types.js';
 import type { CoreMessage } from 'ai';
 
-export { InfiniteMemoryConfig, ModelContext } from './types';
+export { InfiniteMemoryConfig, ModelContext } from './types.js';
 
 /**
  * Type for the return value of createInfiniteMemory

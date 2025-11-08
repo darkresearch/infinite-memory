@@ -183,18 +183,19 @@ export class ContextManager {
     const latestMessage = messages[messages.length - 1];
     const queryText = extractSearchableText(latestMessage);
 
-    const matches = await this.openMemory.queryRelevant(
+    const { userMemories, assistantMemories } = await this.openMemory.queryRelevant(
       context.conversationId,
       context.userId,
       queryText,
-      20 // Get top 20 candidates
+      20 // Get top 20 candidates total (split between user/assistant)
     );
 
-    console.log(`🔍 [InfiniteMemory] Found ${matches.length} relevant memories`);
+    const totalMatches = userMemories.length + assistantMemories.length;
+    console.log(`🔍 [InfiniteMemory] Found ${totalMatches} relevant memories (${userMemories.length} from user, ${assistantMemories.length} from assistant)`);
 
     // Use OpenMemory's processed content directly (summarized memories)
     // No need to fetch from Supabase - the summaries are perfect for context
-    if (matches.length === 0) {
+    if (totalMatches === 0) {
       console.log(
         `📭 [InfiniteMemory] No retrieved memories, using recent only`
       );
@@ -210,27 +211,41 @@ export class ContextManager {
       };
     }
 
-    // Token-aware limiting: only include matches that fit within budget
+    // Token-aware limiting: include matches from both user and assistant within budget
     // Reserve space for recent messages + historical context
     const remainingBudget = inputBudget - recentTokens;
-    const fittingMatches = [];
+    const fittingUserMemories = [];
+    const fittingAssistantMemories = [];
     let totalContextTokens = 0;
 
-    for (const match of matches) {
+    // Interleave user and assistant memories by relevance
+    const allMemories = [
+      ...userMemories.map(m => ({ ...m, role: 'user' as const })),
+      ...assistantMemories.map(m => ({ ...m, role: 'assistant' as const })),
+    ].sort((a, b) => b.score - a.score); // Sort by relevance score
+
+    for (const match of allMemories) {
       const matchTokens = Math.ceil(match.content.length / 4);
       // Rough estimate for JSON formatting overhead (~50 tokens per match)
       const formattedTokens = matchTokens + 50;
       
       if (totalContextTokens + formattedTokens <= remainingBudget) {
-        fittingMatches.push(match);
+        if (match.role === 'user') {
+          fittingUserMemories.push(match);
+        } else {
+          fittingAssistantMemories.push(match);
+        }
         totalContextTokens += formattedTokens;
       } else {
-        console.log(`⚠️ [InfiniteMemory] Stopping at ${fittingMatches.length}/${matches.length} matches to stay within budget`);
+        const totalFitting = fittingUserMemories.length + fittingAssistantMemories.length;
+        console.log(`⚠️ [InfiniteMemory] Stopping at ${totalFitting}/${allMemories.length} matches to stay within budget`);
         break;
       }
     }
 
-    if (fittingMatches.length === 0) {
+    const totalFittingMatches = fittingUserMemories.length + fittingAssistantMemories.length;
+    
+    if (totalFittingMatches === 0) {
       console.log(
         `📭 [InfiniteMemory] No memories fit within budget, using recent only`
       );
@@ -246,35 +261,57 @@ export class ContextManager {
       };
     }
 
-    console.log(`📊 [InfiniteMemory] Using ${fittingMatches.length} memories (~${totalContextTokens.toLocaleString()} tokens) within budget`);
+    console.log(`📊 [InfiniteMemory] Using ${totalFittingMatches} memories (~${totalContextTokens.toLocaleString()} tokens) within budget (${fittingUserMemories.length} user, ${fittingAssistantMemories.length} assistant)`);
 
-    // Format memories as JSON objects for clear delineation
-    const memoryObjects = fittingMatches.map((match) => {
+    // Format user memories
+    const userMemoryObjects = fittingUserMemories.map((match) => {
       const memoryObj: any = {
         content: match.content,
         relevance: match.score,
       };
-      
-      // Add timestamp if available
       if (match.timestamp) {
         memoryObj.timestamp_ms = match.timestamp;
       }
-      
       return JSON.stringify(memoryObj, null, 2);
     });
     
-    const historicalContext = `=== Relevant context from past conversations ===\nEach memory is a JSON object with timestamp_ms (Unix epoch), content, and relevance score.\nMore recent timestamps and higher relevance scores are more important.\n\n${memoryObjects.join('\n\n')}`;
+    // Format assistant memories
+    const assistantMemoryObjects = fittingAssistantMemories.map((match) => {
+      const memoryObj: any = {
+        content: match.content,
+        relevance: match.score,
+      };
+      if (match.timestamp) {
+        memoryObj.timestamp_ms = match.timestamp;
+      }
+      return JSON.stringify(memoryObj, null, 2);
+    });
+    
+    // Build historical context with clear attribution
+    let historicalContext = `=== Relevant context from past conversations ===\n`;
+    historicalContext += `Each memory is a JSON object with timestamp_ms (Unix epoch), content, and relevance score.\n`;
+    historicalContext += `More recent timestamps and higher relevance scores are more important.\n\n`;
+    
+    if (fittingUserMemories.length > 0) {
+      historicalContext += `=== What you told me ===\n`;
+      historicalContext += `${userMemoryObjects.join('\n\n')}\n\n`;
+    }
+    
+    if (fittingAssistantMemories.length > 0) {
+      historicalContext += `=== What I told you ===\n`;
+      historicalContext += `${assistantMemoryObjects.join('\n\n')}`;
+    }
     
     const contextTokens = Math.ceil(historicalContext.length / 4);
 
     console.log(
-      `✅ [InfiniteMemory] Context built: ${fittingMatches.length} memories (${contextTokens.toLocaleString()} tokens) + ${recentCount} recent messages`
+      `✅ [InfiniteMemory] Context built: ${totalFittingMatches} memories (${contextTokens.toLocaleString()} tokens) + ${recentCount} recent messages`
     );
-    console.log('📜 [InfiniteMemory] Historical context (sorted by relevance + recency):');
+    console.log('📜 [InfiniteMemory] Historical context:');
     console.log('─'.repeat(80));
     console.log(historicalContext);
     console.log('─'.repeat(80));
-    console.log('💡 [InfiniteMemory] Note: OpenMemory uses temporal decay - recent memories are prioritized');
+    console.log('💡 [InfiniteMemory] Note: Memories separated by speaker for clear attribution');
 
     return {
       messages: recentMessages,
@@ -282,7 +319,7 @@ export class ContextManager {
       metadata: {
         estimatedTokens: recentTokens + contextTokens,
         recentCount,
-        retrievedCount: fittingMatches.length,
+        retrievedCount: totalFittingMatches,
         usedOpenMemory: true,
       },
     };
