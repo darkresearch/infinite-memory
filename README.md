@@ -1,6 +1,8 @@
-# @darkresearch/infinite-memory
+# infinite-memory
 
 > Infinite context windows for Claude via OpenMemory semantic retrieval
+
+**By [Dark Research](https://github.com/darkresearch)**
 
 Drop-in replacement for Anthropic's AI SDK provider that automatically manages infinite conversation context using OpenMemory for semantic storage and retrieval.
 
@@ -17,7 +19,7 @@ Drop-in replacement for Anthropic's AI SDK provider that automatically manages i
 ## Installation
 
 ```bash
-npm install @darkresearch/infinite-memory
+npm install infinite-memory
 ```
 
 ## Prerequisites
@@ -27,7 +29,7 @@ You need an OpenMemory server running. See [OpenMemory Quick Start](https://open
 ## Quick Start
 
 ```typescript
-import { createInfiniteMemory } from '@darkresearch/infinite-memory';
+import { createInfiniteMemory } from 'infinite-memory';
 import { streamText } from 'ai';
 
 // Create the infinite memory provider
@@ -175,7 +177,7 @@ const result = await generateText({
 
 ```typescript
 import express from 'express';
-import { createInfiniteMemory } from '@darkresearch/infinite-memory';
+import { createInfiniteMemory } from 'infinite-memory';
 import { streamText } from 'ai';
 
 const app = express();
@@ -258,14 +260,21 @@ Enable verbose logging by checking console output:
 📝 [InfiniteMemory] Stored message msg_xyz (assistant)
 ```
 
+## Contributing
+
+Contributions are welcome! Please open an issue or PR on [GitHub](https://github.com/darkresearch/infinite-memory).
+
 ## License
 
-Apache 2.0 © Dark Research
+Apache 2.0 © [Dark Research](https://github.com/darkresearch)
 
-## Credits
+## Built With
 
-Built on:
-- [Vercel AI SDK](https://sdk.vercel.ai/)
-- [Anthropic Claude](https://www.anthropic.com/)
-- [OpenMemory](https://openmemory.cavira.app/)
+- [Vercel AI SDK](https://sdk.vercel.ai/) - AI framework
+- [Anthropic Claude](https://www.anthropic.com/) - Language model
+- [OpenMemory](https://openmemory.cavira.app/) - Semantic memory engine
+
+---
+
+**Made with ❤️ by [Dark Research](https://darkresearch.ai)**
 
