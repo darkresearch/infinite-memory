@@ -6,7 +6,7 @@
       "dependencies": {
         "@ai-sdk/anthropic": "^2.0.16",
         "ai": "^5.0.50",
-        "openmemory-js": "^0.1.0",
+        "openmemory-js": "^0.3.0",
         "zod": "^4.1.8",
       },
       "devDependencies": {
@@ -42,7 +42,7 @@
 
     "json-schema": ["json-schema@0.4.0", "", {}, "sha512-es94M3nTIfsEPisRafak+HDLfHXnKBhV3vU5eqPcS3flIWqcxJWgXHXiey3YrpaNsanY5ei1VoYEbOzijuq9BA=="],
 
-    "openmemory-js": ["openmemory-js@0.1.1", "", {}, "sha512-v5SuAU9HliUIA/CG1PFCvtAs0cHXeTWtItTa3BzhWqU6MTYGMoosSlNuxRCSdoG7JnTmPwzh8xG8173JS43eJg=="],
+    "openmemory-js": ["openmemory-js@0.3.0", "", {}, "sha512-GMBglavgsIQcuwCf+sLULnT6ElxjeN0v3VGRTg1jjODeVXJeeQEY/O71fb2WJ3+gKLCnNFhE+a7TvEHspt92mw=="],
 
     "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 

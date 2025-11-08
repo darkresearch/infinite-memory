@@ -55,7 +55,8 @@ export class InfiniteMemoryModel {
 
     // Store assistant response after generation
     if (result.text) {
-      const assistantMessageId = generateMessageId();
+      // Try to extract message ID from result or generate one
+      const assistantMessageId = (result as any).id || generateMessageId();
       await this.contextManager.storeMessage(
         this.context,
         'assistant',
@@ -90,8 +91,8 @@ export class InfiniteMemoryModel {
       prompt: contextResult.messages,
     });
 
-    // Wrap the stream to accumulate the assistant response
-    const assistantMessageId = generateMessageId();
+    // Extract message ID from result if available, or generate one
+    const assistantMessageId = (result as any).id || generateMessageId();
     const accumulatedParts: string[] = [];
     const accumulatedToolCalls: any[] = [];
 
