@@ -147,8 +147,8 @@ export class OpenMemoryClient {
    * Query for relevant message IDs
    */
   async queryRelevant(
-    _conversationId: string,
-    _userId: string,
+    conversationId: string,
+    userId: string,
     queryText: string,
     k: number = 20
   ): Promise<OpenMemoryMatch[]> {
@@ -159,13 +159,19 @@ export class OpenMemoryClient {
       });
 
       // Race between query and timeout
+      // CRITICAL: Filter by userId and conversationId to prevent memory leakage between users
       const result = await Promise.race([
-        this.client.query(queryText, { k } as any),
+        this.client.query(queryText, { 
+          k,
+          filters: {
+            tags: [userId, conversationId],
+          }
+        }),
         timeoutPromise,
       ]);
 
       console.log(
-        `🔍 [InfiniteMemory] Found ${result.matches.length} relevant matches`
+        `🔍 [InfiniteMemory] Found ${result.matches.length} relevant matches (filtered by userId: ${userId}, conversationId: ${conversationId})`
       );
 
       // Debug: Log what we're getting from OpenMemory
