@@ -1,0 +1,44 @@
+{
+  "name": "@darkresearch/infinite-memory",
+  "version": "0.1.0",
+  "description": "Infinite context windows for Claude via OpenMemory semantic retrieval",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "claude",
+    "anthropic",
+    "ai-sdk",
+    "memory",
+    "openmemory",
+    "infinite-context",
+    "rag"
+  ],
+  "author": "Dark Research",
+  "license": "MIT",
+  "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.16",
+    "ai": "^5.0.50",
+    "openmemory-js": "^0.1.0",
+    "zod": "^4.1.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "~5.9.2"
+  },
+  "peerDependencies": {
+    "@ai-sdk/anthropic": "^2.0.0",
+    "ai": "^5.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
+}
+
