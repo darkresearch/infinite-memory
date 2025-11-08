@@ -10,20 +10,6 @@ on:
 jobs:
   test-user-isolation:
     runs-on: ubuntu-latest
-    
-    services:
-      openmemory:
-        image: ghcr.io/caviraoss/openmemory:latest
-        ports:
-          - 8080:8080
-        env:
-          # Hardcoded test keys - safe because this is an ephemeral, isolated instance
-          OPENMEMORY_API_KEY: test-ci-key-for-isolation-testing
-        options: >-
-          --health-cmd "curl -f http://localhost:8080/health || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
       - name: Checkout code
@@ -40,17 +26,46 @@ jobs:
       - name: Build package
         run: bun run build
 
+      - name: Checkout OpenMemory
+        uses: actions/checkout@v4
+        with:
+          repository: 'CaviraOSS/OpenMemory'
+          path: 'openmemory-repo'
+
+      - name: Build and Start OpenMemory
+        run: |
+          cd openmemory-repo/backend
+          # Build the Docker image
+          docker build -t openmemory-test:latest .
+          # Run the container
+          docker run -d \
+            --name openmemory \
+            -p 8080:8080 \
+            -e OM_PORT=8080 \
+            -e OM_API_KEY=test-ci-key-for-isolation-testing \
+            -e OM_EMBEDDINGS=synthetic \
+            -e OM_EMBED_MODE=simple \
+            -e OM_VEC_DIM=256 \
+            openmemory-test:latest
+
       - name: Wait for OpenMemory to be ready
         run: |
           echo "Waiting for OpenMemory to be healthy..."
-          for i in {1..30}; do
-            if curl -f http://localhost:8080/health; then
+          for i in {1..60}; do
+            if curl -f http://localhost:8080/health 2>/dev/null; then
               echo "✅ OpenMemory is ready!"
-              break
+              exit 0
             fi
-            echo "Waiting... attempt $i/30"
+            echo "Waiting... attempt $i/60"
             sleep 2
           done
+          echo "❌ OpenMemory failed to start"
+          docker logs openmemory
+          exit 1
+
+      - name: Show OpenMemory logs (if startup succeeded)
+        if: success()
+        run: docker logs openmemory --tail 50
 
       - name: Run User Isolation Test
         env:
@@ -60,13 +75,13 @@ jobs:
           # Note: ANTHROPIC_API_KEY not needed - test messages are tiny, no summarization triggered
         run: node tests/user-isolation.test.js
 
-      - name: Test Summary
+      - name: Show OpenMemory logs (if test failed)
+        if: failure()
+        run: docker logs openmemory
+
+      - name: Cleanup
         if: always()
         run: |
-          if [ $? -eq 0 ]; then
-            echo "✅ User isolation test PASSED"
-          else
-            echo "❌ User isolation test FAILED"
-            exit 1
-          fi
+          docker stop openmemory || true
+          docker rm openmemory || true
 
