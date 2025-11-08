@@ -88,6 +88,22 @@ export class ContextManager {
           const summaryTokens = Math.ceil(summary.length / 4);
           console.log(`✅ [InfiniteMemory] Summarized single message: ${latestTokens.toLocaleString()} → ${summaryTokens.toLocaleString()} tokens`);
           
+          // Store the summary to OpenMemory (replaces the bloated original)
+          // This prevents re-summarization on the next turn
+          if ((latestMessage as any).id) {
+            try {
+              await this.storeMessage(
+                context,
+                latestMessage.role as 'user' | 'assistant',
+                summary, // Store the summary, not the original
+                (latestMessage as any).id
+              );
+              console.log(`💾 [InfiniteMemory] Stored summarized version of message ${(latestMessage as any).id}`);
+            } catch (error) {
+              console.error(`⚠️ [InfiniteMemory] Failed to store summary:`, error);
+            }
+          }
+          
           return {
             messages: [],
             historicalContext: `[SUMMARIZED LARGE MESSAGE]\n${summary}`,
@@ -113,6 +129,24 @@ export class ContextManager {
         const summaryTokens = Math.ceil(summary.length / 4);
         
         console.log(`✅ [InfiniteMemory] Summarized ${toSummarize.length} messages: ${recentTokens.toLocaleString()} → ${(summaryTokens + latestTokens).toLocaleString()} tokens`);
+        
+        // Store summaries of large messages to OpenMemory (replaces bloated originals)
+        // This prevents re-summarization on the next turn
+        for (const msg of toSummarize) {
+          if ((msg as any).id) {
+            try {
+              await this.storeMessage(
+                context,
+                msg.role as 'user' | 'assistant',
+                summary, // Store the summary
+                (msg as any).id
+              );
+              console.log(`💾 [InfiniteMemory] Stored summarized version of message ${(msg as any).id}`);
+            } catch (error) {
+              console.error(`⚠️ [InfiniteMemory] Failed to store summary:`, error);
+            }
+          }
+        }
         
         return {
           messages: [latestMessage],
@@ -176,8 +210,46 @@ export class ContextManager {
       };
     }
 
+    // Token-aware limiting: only include matches that fit within budget
+    // Reserve space for recent messages + historical context
+    const remainingBudget = inputBudget - recentTokens;
+    const fittingMatches = [];
+    let totalContextTokens = 0;
+
+    for (const match of matches) {
+      const matchTokens = Math.ceil(match.content.length / 4);
+      // Rough estimate for JSON formatting overhead (~50 tokens per match)
+      const formattedTokens = matchTokens + 50;
+      
+      if (totalContextTokens + formattedTokens <= remainingBudget) {
+        fittingMatches.push(match);
+        totalContextTokens += formattedTokens;
+      } else {
+        console.log(`⚠️ [InfiniteMemory] Stopping at ${fittingMatches.length}/${matches.length} matches to stay within budget`);
+        break;
+      }
+    }
+
+    if (fittingMatches.length === 0) {
+      console.log(
+        `📭 [InfiniteMemory] No memories fit within budget, using recent only`
+      );
+      return {
+        messages: recentMessages,
+        historicalContext: null,
+        metadata: {
+          estimatedTokens: recentTokens,
+          recentCount,
+          retrievedCount: 0,
+          usedOpenMemory: false,
+        },
+      };
+    }
+
+    console.log(`📊 [InfiniteMemory] Using ${fittingMatches.length} memories (~${totalContextTokens.toLocaleString()} tokens) within budget`);
+
     // Format memories as JSON objects for clear delineation
-    const memoryObjects = matches.map((match) => {
+    const memoryObjects = fittingMatches.map((match) => {
       const memoryObj: any = {
         content: match.content,
         relevance: match.score,
@@ -196,7 +268,7 @@ export class ContextManager {
     const contextTokens = Math.ceil(historicalContext.length / 4);
 
     console.log(
-      `✅ [InfiniteMemory] Context built: ${matches.length} memories (${contextTokens.toLocaleString()} tokens) + ${recentCount} recent messages`
+      `✅ [InfiniteMemory] Context built: ${fittingMatches.length} memories (${contextTokens.toLocaleString()} tokens) + ${recentCount} recent messages`
     );
     console.log('📜 [InfiniteMemory] Historical context (sorted by relevance + recency):');
     console.log('─'.repeat(80));
@@ -210,7 +282,7 @@ export class ContextManager {
       metadata: {
         estimatedTokens: recentTokens + contextTokens,
         recentCount,
-        retrievedCount: matches.length,
+        retrievedCount: fittingMatches.length,
         usedOpenMemory: true,
       },
     };
