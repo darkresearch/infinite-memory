@@ -1,6 +1,6 @@
 {
-  "name": "@darkresearch/infinite-memory",
-  "version": "0.1.0",
+  "name": "infinite-memory",
+  "version": "0.1.1",
   "description": "Infinite context windows for Claude via OpenMemory semantic retrieval",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,8 +19,16 @@
     "infinite-context",
     "rag"
   ],
-  "author": "Dark Research",
+  "author": "Edgar Pavlovsky <edgar@darkresearch.ai>",
   "license": "Apache-2.0",
+  "homepage": "https://github.com/darkresearch/infinite-memory#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/darkresearch/infinite-memory.git"
+  },
+  "bugs": {
+    "url": "https://github.com/darkresearch/infinite-memory/issues"
+  },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.16",
     "ai": "^5.0.50",
