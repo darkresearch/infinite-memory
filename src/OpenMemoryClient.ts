@@ -2,7 +2,7 @@
  * OpenMemory client wrapper for storing and querying messages
  */
 
-import OpenMemory from 'openmemory-js';
+import { OpenMemory } from 'openmemory-js';
 import type { StoredMessage, OpenMemoryMatch } from './types.js';
 import { extractSearchableText } from './utils/messageFormatter.js';
 
