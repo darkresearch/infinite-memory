@@ -80,20 +80,22 @@ export class ContextManager {
       `🎯 [InfiniteMemory] Context budget: ${inputBudget.toLocaleString()} tokens (model: ${modelId})`
     );
 
-    // Check if any large messages have already been stored in OpenMemory
-    // Only check messages >50k tokens to avoid unnecessary queries
-    const largeMessages = messages.filter(msg => {
+    // Check if any HISTORICAL large messages have already been stored in OpenMemory
+    // Important: Only check historical messages (exclude the last message which is the new incoming one)
+    // The new incoming message should go through normal processing/summarization if too large
+    const historicalMessages = messages.length > 1 ? messages.slice(0, -1) : [];
+    const largeHistoricalMessages = historicalMessages.filter(msg => {
       const tokens = estimateTotalTokens([msg]);
       return tokens > 50000; // ~200k chars
     });
 
     let storedMessageIds = new Set<string>();
-    if (largeMessages.length > 0) {
-      const largeMessageIds = largeMessages
+    if (largeHistoricalMessages.length > 0) {
+      const largeMessageIds = largeHistoricalMessages
         .map(msg => (msg as any).id)
         .filter(Boolean);
       
-      console.log(`🔍 [InfiniteMemory] Checking if ${largeMessages.length} large messages are already stored...`);
+      console.log(`🔍 [InfiniteMemory] Checking if ${largeHistoricalMessages.length} large HISTORICAL messages are already stored...`);
       console.log(`   Checking IDs: ${largeMessageIds.join(', ')}`);
       
       if (largeMessageIds.length > 0) {
