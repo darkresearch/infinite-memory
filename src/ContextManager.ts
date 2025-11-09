@@ -89,11 +89,12 @@ export class ContextManager {
 
     let storedMessageIds = new Set<string>();
     if (largeMessages.length > 0) {
-      console.log(`🔍 [InfiniteMemory] Checking if ${largeMessages.length} large messages are already stored...`);
-      
       const largeMessageIds = largeMessages
         .map(msg => (msg as any).id)
         .filter(Boolean);
+      
+      console.log(`🔍 [InfiniteMemory] Checking if ${largeMessages.length} large messages are already stored...`);
+      console.log(`   Checking IDs: ${largeMessageIds.join(', ')}`);
       
       if (largeMessageIds.length > 0) {
         storedMessageIds = await this.openMemory.checkMessagesExist(
@@ -101,6 +102,9 @@ export class ContextManager {
           largeMessageIds
         );
         console.log(`✅ [InfiniteMemory] Found ${storedMessageIds.size} large messages already in memory`);
+        if (storedMessageIds.size > 0) {
+          console.log(`   Found IDs: ${Array.from(storedMessageIds).join(', ')}`);
+        }
       }
     }
 
