@@ -35,6 +35,7 @@ function createMemoryPlaceholder(messageId: string, content: string | any[]): st
     console.warn(`⚠️ [InfiniteMemory] No text extracted from content for placeholder!`);
   }
   const preview = extracted.substring(0, 500);
+  console.log(`📝 [InfiniteMemory] Preview text: "${preview.substring(0, 100)}..."`);
   
   return `<LARGE_MESSAGE_IN_MEMORY id="${messageId}">
 This message has been stored in your long-term memory. To recall details, search your memory.
