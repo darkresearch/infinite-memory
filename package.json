@@ -10,7 +10,8 @@
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "test:isolation": "node tests/user-isolation.test.js",
-    "test:tag-filtering": "node tests/tag-filtering.test.js"
+    "test:tag-filtering": "node tests/tag-filtering.test.js",
+    "test:large-message": "node tests/large-message-replacement.test.js"
   },
   "keywords": [
     "claude",
