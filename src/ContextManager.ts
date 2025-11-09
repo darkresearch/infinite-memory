@@ -119,11 +119,18 @@ export class ContextManager {
       const isStored = storedMessageIds.has(msgId) || storedMessageIds.has(baseId);
       
       if (isStored) {
-        console.log(`🔄 [InfiniteMemory] Replacing large stored message ${msgId} with memory placeholder`);
-        return {
-          ...msg,
-          content: createMemoryPlaceholder(msgId, msg.content)
+        const placeholder = createMemoryPlaceholder(msgId, msg.content);
+        console.log(`🔄 [InfiniteMemory] Replacing large stored message ${msgId} with placeholder (${placeholder.length} chars)`);
+        
+        // Create a new message object with placeholder content
+        // Important: create a fresh object to ensure content is replaced
+        const replacedMessage = {
+          role: msg.role,
+          content: placeholder,  // Simple string content
+          id: msgId,
         } as CoreMessage;
+        
+        return replacedMessage;
       }
       
       return msg;
