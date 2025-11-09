@@ -29,13 +29,7 @@ function extractBaseMessageId(id: string): string {
  */
 function createMemoryPlaceholder(messageId: string, content: string | any[]): string {
   const extracted = extractSearchableText({ role: 'user', content });
-  console.log(`📝 [InfiniteMemory] Extracted text length: ${extracted.length} chars`);
-  console.log(`📝 [InfiniteMemory] Content type: ${typeof content}, is array: ${Array.isArray(content)}`);
-  if (extracted.length === 0) {
-    console.warn(`⚠️ [InfiniteMemory] No text extracted from content for placeholder!`);
-  }
   const preview = extracted.substring(0, 500);
-  console.log(`📝 [InfiniteMemory] Preview text: "${preview.substring(0, 100)}..."`);
   
   return `<LARGE_MESSAGE_IN_MEMORY id="${messageId}">
 This message has been stored in your long-term memory. To recall details, search your memory.
@@ -132,9 +126,7 @@ export class ContextManager {
       
       if (isStored) {
         const placeholder = createMemoryPlaceholder(msgId, msg.content);
-        const preview = placeholder.substring(0, 100).replace(/\n/g, ' ');
         console.log(`🔄 [InfiniteMemory] Replacing large stored message ${msgId} with placeholder (${placeholder.length} chars)`);
-        console.log(`   Preview: "${preview}..."`);
         
         // Create a new message object with placeholder content
         // Important: create a fresh object to ensure content is replaced
