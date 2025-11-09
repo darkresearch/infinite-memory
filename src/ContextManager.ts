@@ -126,7 +126,9 @@ export class ContextManager {
       
       if (isStored) {
         const placeholder = createMemoryPlaceholder(msgId, msg.content);
+        const preview = placeholder.substring(0, 100).replace(/\n/g, ' ');
         console.log(`🔄 [InfiniteMemory] Replacing large stored message ${msgId} with placeholder (${placeholder.length} chars)`);
+        console.log(`   Preview: "${preview}..."`);
         
         // Create a new message object with placeholder content
         // Important: create a fresh object to ensure content is replaced

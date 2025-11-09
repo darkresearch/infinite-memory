@@ -1,6 +1,6 @@
 {
   "name": "infinite-memory",
-  "version": "0.1.8-beta.3",
+  "version": "0.1.8-beta.4",
   "description": "Infinite context windows for Claude via OpenMemory semantic retrieval",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
