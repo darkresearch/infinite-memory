@@ -28,8 +28,13 @@ function extractBaseMessageId(id: string): string {
  * Create a placeholder for large stored messages
  */
 function createMemoryPlaceholder(messageId: string, content: string | any[]): string {
-  const preview = extractSearchableText({ role: 'user', content })
-    .substring(0, 500);
+  const extracted = extractSearchableText({ role: 'user', content });
+  console.log(`📝 [InfiniteMemory] Extracted text length: ${extracted.length} chars`);
+  console.log(`📝 [InfiniteMemory] Content type: ${typeof content}, is array: ${Array.isArray(content)}`);
+  if (extracted.length === 0) {
+    console.warn(`⚠️ [InfiniteMemory] No text extracted from content for placeholder!`);
+  }
+  const preview = extracted.substring(0, 500);
   
   return `<LARGE_MESSAGE_IN_MEMORY id="${messageId}">
 This message has been stored in your long-term memory. To recall details, search your memory.
