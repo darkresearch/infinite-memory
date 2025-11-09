@@ -90,6 +90,7 @@ export class OpenMemoryClient {
                 'chunk',
                 message.role,
                 message.conversationId,  // Keep conversation in tags for filtering
+                message.id,  // Message ID for exact filtering
               ],
               metadata: {
                 timestamp: message.timestamp,
@@ -119,6 +120,7 @@ export class OpenMemoryClient {
           'message',
           message.role,
           message.conversationId,  // Keep conversation in tags for filtering
+          message.id,  // Message ID for exact filtering
         ],
         metadata: {
           timestamp: message.timestamp,
@@ -145,6 +147,40 @@ export class OpenMemoryClient {
       });
       // Don't throw - storage failures shouldn't break the chat flow
     }
+  }
+
+  /**
+   * Check if messages exist in OpenMemory by their IDs
+   * Used to avoid re-processing already-stored messages
+   * Uses tag filtering for exact matching (not semantic)
+   */
+  async checkMessagesExist(
+    userId: string,
+    messageIds: string[]
+  ): Promise<Set<string>> {
+    const foundIds = new Set<string>();
+    
+    for (const id of messageIds) {
+      try {
+        // Use empty query with tag filter for exact matching
+        const result = await this.client.query('', {
+          k: 1,
+          filters: {
+            user_id: `${userId}-user`,  // Only check user messages
+            tags: [id],  // Exact tag match on message ID
+          }
+        });
+        
+        if (result.matches.length > 0) {
+          foundIds.add(id);
+        }
+      } catch (error) {
+        // Message doesn't exist or query failed, skip
+        continue;
+      }
+    }
+    
+    return foundIds;
   }
 
   /**

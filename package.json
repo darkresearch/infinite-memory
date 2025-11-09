@@ -9,7 +9,8 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
-    "test:isolation": "node tests/user-isolation.test.js"
+    "test:isolation": "node tests/user-isolation.test.js",
+    "test:tag-filtering": "node tests/tag-filtering.test.js"
   },
   "keywords": [
     "claude",

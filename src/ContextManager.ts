@@ -16,6 +16,28 @@ import { extractSearchableText } from './utils/messageFormatter.js';
 import { getModelLimit } from './types.js';
 import { summarizeConversation, summarizeLargeMessage } from './utils/summarizer.js';
 
+/**
+ * Extract base message ID from chunk IDs like "uuid-chunk-1" -> "uuid"
+ */
+function extractBaseMessageId(id: string): string {
+  const match = id.match(/^(.+)-chunk-\d+$/);
+  return match ? match[1] : id;
+}
+
+/**
+ * Create a placeholder for large stored messages
+ */
+function createMemoryPlaceholder(messageId: string, content: string | any[]): string {
+  const preview = extractSearchableText({ role: 'user', content })
+    .substring(0, 500);
+  
+  return `<LARGE_MESSAGE_IN_MEMORY id="${messageId}">
+This message has been stored in your long-term memory. To recall details, search your memory.
+
+Preview: "${preview}..."
+</LARGE_MESSAGE_IN_MEMORY>`;
+}
+
 export class ContextManager {
   constructor(
     private openMemory: OpenMemoryClient,
@@ -58,9 +80,58 @@ export class ContextManager {
       `🎯 [InfiniteMemory] Context budget: ${inputBudget.toLocaleString()} tokens (model: ${modelId})`
     );
 
+    // Check if any large messages have already been stored in OpenMemory
+    // Only check messages >50k tokens to avoid unnecessary queries
+    const largeMessages = messages.filter(msg => {
+      const tokens = estimateTotalTokens([msg]);
+      return tokens > 50000; // ~200k chars
+    });
+
+    let storedMessageIds = new Set<string>();
+    if (largeMessages.length > 0) {
+      console.log(`🔍 [InfiniteMemory] Checking if ${largeMessages.length} large messages are already stored...`);
+      
+      const largeMessageIds = largeMessages
+        .map(msg => (msg as any).id)
+        .filter(Boolean);
+      
+      if (largeMessageIds.length > 0) {
+        storedMessageIds = await this.openMemory.checkMessagesExist(
+          context.userId,
+          largeMessageIds
+        );
+        console.log(`✅ [InfiniteMemory] Found ${storedMessageIds.size} large messages already in memory`);
+      }
+    }
+
+    // Replace large stored messages with placeholders to prevent re-processing
+    const processedMessages = messages.map(msg => {
+      const msgId = (msg as any).id;
+      if (!msgId) return msg;
+      
+      const tokens = estimateTotalTokens([msg]);
+      const isLarge = tokens > 50000;
+      
+      if (!isLarge) return msg; // Small messages pass through
+      
+      // Check if this message (or its chunks) has been stored
+      const baseId = extractBaseMessageId(msgId);
+      const isStored = storedMessageIds.has(msgId) || storedMessageIds.has(baseId);
+      
+      if (isStored) {
+        console.log(`🔄 [InfiniteMemory] Replacing large stored message ${msgId} with memory placeholder`);
+        return {
+          ...msg,
+          content: createMemoryPlaceholder(msgId, msg.content)
+        } as CoreMessage;
+      }
+      
+      return msg;
+    }) as CoreMessage[];
+
     // Always include the last 3-5 messages chronologically
-    const recentCount = Math.min(5, messages.length);
-    const recentMessages = messages.slice(-recentCount);
+    const recentCount = Math.min(5, processedMessages.length);
+    const recentMessages = processedMessages.slice(-recentCount);
     const recentTokens = estimateTotalTokens(recentMessages);
 
     console.log(

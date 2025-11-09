@@ -75,6 +75,12 @@ jobs:
           # Note: ANTHROPIC_API_KEY not needed - test messages are tiny, no summarization triggered
         run: node tests/user-isolation.test.js
 
+      - name: Run Tag Filtering Test
+        env:
+          OPENMEMORY_URL: http://localhost:8080
+          OPENMEMORY_API_KEY: test-ci-key-for-isolation-testing
+        run: node tests/tag-filtering.test.js
+
       - name: Show OpenMemory logs (if test failed)
         if: failure()
         run: docker logs openmemory

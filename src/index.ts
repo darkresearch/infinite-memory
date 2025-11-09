@@ -95,5 +95,10 @@ export function createInfiniteMemory(config: InfiniteMemoryConfig) {
     getModel(modelId: string) {
       return anthropic(modelId);
     },
+
+    /**
+     * Internal OpenMemory client (exposed for testing)
+     */
+    openMemory: openMemoryClient,
   };
 }
