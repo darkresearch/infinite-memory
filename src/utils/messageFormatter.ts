@@ -44,6 +44,32 @@ export function extractSearchableText(message: any): string {
     return content;
   }
 
+  // Handle content as object with parts property (e.g., { parts: [...] })
+  if (content && typeof content === 'object' && 'parts' in content && Array.isArray(content.parts)) {
+    const textParts: string[] = [];
+    
+    for (const part of content.parts) {
+      if (part.type === 'text' && part.text) {
+        textParts.push(part.text);
+      } else if (part.type === 'reasoning' && part.text) {
+        textParts.push(part.text);
+      } else if (part.type === 'tool-call') {
+        textParts.push(`[Tool: ${part.toolName}]`);
+        textParts.push(JSON.stringify(part.args || {}));
+      } else if (part.type === 'tool-result') {
+        textParts.push(`[Result: ${part.toolName || 'unknown'}]`);
+        const result = part.result || part.content;
+        if (typeof result === 'string') {
+          textParts.push(result);
+        } else {
+          textParts.push(JSON.stringify(result || {}));
+        }
+      }
+    }
+    
+    return textParts.join(' ').trim();
+  }
+
   if (Array.isArray(content)) {
     const textParts: string[] = [];
 
