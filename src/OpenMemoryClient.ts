@@ -45,8 +45,8 @@ export class OpenMemoryClient {
   async addMessage(message: StoredMessage): Promise<void> {
     try {
       // Extract searchable text for embedding
-      // Pass the full message content (handles both string and object formats)
-      const searchableText = extractSearchableText(message.content);
+      // Pass the full message object (extractSearchableText expects message.content)
+      const searchableText = extractSearchableText(message);
 
       // Validate that we have actual content to store
       if (!searchableText || searchableText.trim().length === 0) {
